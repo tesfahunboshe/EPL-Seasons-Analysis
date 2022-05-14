@@ -1,0 +1,181 @@
+---
+title: "EPL Season Report"
+author: "Tesfahun Tegene Boshe, Nahid Gulaliyev, Yenish Nurmuhammedov"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+params:
+  season: "1819"
+  team: "Man United"
+---
+
+```{r echo = FALSE, setup, include=FALSE, warning=FALSE, message=FALSE}
+
+library(tidyverse, warn.conflicts = FALSE)
+# Suppress summarise info
+options(dplyr.summarise.inform = FALSE)
+
+# knitr::opts_chunk$set(echo = TRUE)
+SeasonData <- read.csv(paste0("../input/season-",params$season,"_csv.csv"))[,2:23]
+
+```
+
+## `r params$team` Profile - Season: `r params$season`  
+
+### Goals Per Game
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+
+functionTeamGames <- function(team){
+
+  teamGames <-SeasonData %>% filter(HomeTeam == team | AwayTeam == team)
+  teamGames$IsHomeAway <- ifelse(teamGames$HomeTeam == team, "H", "A")
+  teamGames$Points <- ifelse(teamGames$FTR=="D",1,ifelse(teamGames$FTR == teamGames$IsHomeAway,3,0))
+  return(teamGames)
+}
+```
+
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+teamGames <- functionTeamGames(params$team)
+teamGames$TeamGoals <- ifelse(teamGames$IsHomeAway=="H",teamGames$FTHG,teamGames$FTAG)
+teamGames$Shots <- ifelse(teamGames$IsHomeAway=="H",teamGames$HS,teamGames$AS)
+teamGames$ShotsonTarget <- ifelse(teamGames$IsHomeAway=="H",teamGames$HS,teamGames$AS)
+teamGames$Opponent <- ifelse(teamGames$HomeTeam==params$team, teamGames$AwayTeam,teamGames$HomeTeam) 
+```
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+
+ggplot(teamGames %>% group_by(TeamGoals,IsHomeAway) %>% summarise(N = n()),
+       aes(x =TeamGoals , y = N, fill = IsHomeAway)) +
+  geom_bar(stat = "identity",position = position_dodge(0.9))+
+  geom_text(
+    aes(label = N),
+    color = "black",
+    # vjust = 0.1,
+    position = position_dodge(0.7)
+    ) +
+  labs(title=paste(params$team, " - Goals Per Game-Season:",params$season),
+       caption = "Source: EPL data set")+
+  scale_x_continuous(name = "Number of goals",
+                        breaks = seq(0,15,1)
+                     )+
+  scale_y_continuous(name = "Count of games",
+                        breaks = seq(0,36,1)
+                     )+
+  scale_fill_discrete(name = "", labels = c("Away", "Home"))
+  
+```
+
+
+### Games won after trailing at half time
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+teamGamesTrailing <- teamGames[teamGames$HTR!=teamGames$IsHomeAway & teamGames$HTR!="D",][,c(1:5,7,8,24)]
+colnames(teamGamesTrailing)[4:7] <- c("Full Time Home Goals", "Full Time Away Goals","Half Time Home Goals", "Half Time Away Goals")
+
+DT::datatable(teamGamesTrailing[,-c(8)])
+
+
+```
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+
+ggplot(teamGamesTrailing %>% group_by(Points) %>% summarise(Count = n()),
+       aes(x="", y=Count, fill=as.character(Points)))+
+      geom_bar(width = 1, stat = "identity")+
+      coord_polar("y")+
+      geom_text(aes(y = Count, 
+            label = Count), size=5,
+            position = position_stack(vjust = 0.5))+
+    scale_fill_discrete(name = "", labels = c("Lost", "Tied","Won"))+
+  ylab("Number of games")+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank())+
+  ggtitle("Number of games won vs lost/tied after trailing at half time")
+
+```
+
+
+### General Statistics
+
+#### Total points and win ratio
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+
+cat("Total Points in the season: ", sum(teamGames$Points))
+cat("Number of games per result type:")
+
+table(teamGames$Points)
+```
+
+#### Position on the table
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+SeasonTable <- data.frame(Team=unique(SeasonData$HomeTeam), 
+                 Points= rep(0,length(unique(SeasonData$HomeTeam))))
+
+
+totalPoints <- function(team)
+{
+  teamGames <- functionTeamGames(team)
+  sum(teamGames$Points)
+  
+}
+
+SeasonTable$Points <- unlist(lapply(SeasonTable$Team, totalPoints))
+SeasonTable
+```
+
+**Rank**
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+order.scores<-order(SeasonTable$Points,SeasonTable$Team)
+SeasonTable$rank <- NA
+SeasonTable$rank[order.scores] <- 1:nrow(SeasonTable)
+
+cat(params$team, "finished in",21-SeasonTable$rank[SeasonTable$Team==params$team] ,"th place in EPL season-",params$season)
+```
+
+
+#### Shot Conversion Rate
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+ggplot(teamGames, aes(x=ShotsonTarget,y=TeamGoals,color=IsHomeAway)) +
+  geom_point()+
+  geom_smooth(formula = y ~ x, method = "loess")+
+  theme_minimal()+
+  scale_color_discrete(name = "", labels = c("Away", "Home"))+
+  labs(x = "Number of shots",
+       y = "Number of goals",
+       title = "Shot Conversion Rate")
+```
+
+
+
+#### Win Percentage against the top - 6 in the season
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+
+top6 <- SeasonTable$Team[order(SeasonTable$rank)][16:20]
+top6 <- top6[!top6 %in% params$team] # remove the team if it is also in the top-6
+
+Gamestop6 <- teamGames %>% filter(Opponent %in% top6)
+
+cat(params$team,"won", 100*sum(Gamestop6$Points==3)/nrow(Gamestop6)," % of their games against the top 6 in season ", params$season)
+
+```
+
+
+
+```{r}
+
+############## YENISH ################
+
+
+```
+
+
+```{r}
+
+############### NAHID ################
+```
+
