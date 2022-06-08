@@ -9,7 +9,7 @@ seasons <- c("0910", "1011","1112", "1213","1314", "1415","1516", "1617", "1718"
 teams <- c("Man United", "Arsenal", "Liverpool","Man City", "Tottenham", "Huddersfield","Newcastle","Chelsea","Crystal Palace","Southampton")
 
 # render in a loop
-for (season in seasons[1:2]) {
+for (season in seasons[1:2]) { #1:2 chosen for the sake of limiting output
   
   for (team in teams[1:2])
   {

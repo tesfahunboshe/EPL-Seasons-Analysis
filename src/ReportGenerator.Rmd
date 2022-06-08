@@ -4,7 +4,7 @@ author: "Tesfahun Tegene Boshe, Nahid Gulaliyev, Yenish Nurmuhammedov"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 params:
-  season: "1819"
+  season: "0910"
   team: "Man United"
 ---
 
@@ -14,16 +14,21 @@ library(tidyverse, warn.conflicts = FALSE)
 # Suppress summarise info
 options(dplyr.summarise.inform = FALSE)
 
-# knitr::opts_chunk$set(echo = TRUE)
+#Import data
 SeasonData <- read.csv(paste0("../input/season-",params$season,"_csv.csv"))[,2:23]
 
 ```
 
+<br>
+<br>
+
 ## `r params$team` Profile - Season: `r params$season`  
 
-### Goals Per Game
+<br>
+<br>
 
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
+# function to filter the data by chosen team
 
 functionTeamGames <- function(team){
 
@@ -36,11 +41,14 @@ functionTeamGames <- function(team){
 
 
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
-teamGames <- functionTeamGames(params$team)
+# Data Preparation
+teamGames <- functionTeamGames(params$team) #function call
 teamGames$TeamGoals <- ifelse(teamGames$IsHomeAway=="H",teamGames$FTHG,teamGames$FTAG)
 teamGames$Shots <- ifelse(teamGames$IsHomeAway=="H",teamGames$HS,teamGames$AS)
 teamGames$ShotsonTarget <- ifelse(teamGames$IsHomeAway=="H",teamGames$HS,teamGames$AS)
-teamGames$Opponent <- ifelse(teamGames$HomeTeam==params$team, teamGames$AwayTeam,teamGames$HomeTeam) 
+teamGames$Opponent <- ifelse(teamGames$HomeTeam==params$team, teamGames$AwayTeam,teamGames$HomeTeam)
+teamGames$Date <- as.Date(teamGames$Date, "%d/%m/%Y") # set as date object
+
 ```
 
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
@@ -51,10 +59,9 @@ ggplot(teamGames %>% group_by(TeamGoals,IsHomeAway) %>% summarise(N = n()),
   geom_text(
     aes(label = N),
     color = "black",
-    # vjust = 0.1,
     position = position_dodge(0.7)
     ) +
-  labs(title=paste(params$team, " - Goals Per Game-Season:",params$season),
+  labs(title=paste(params$team, " - Goals Per Game - Season:",params$season),
        caption = "Source: EPL data set")+
   scale_x_continuous(name = "Number of goals",
                         breaks = seq(0,15,1)
@@ -65,18 +72,40 @@ ggplot(teamGames %>% group_by(TeamGoals,IsHomeAway) %>% summarise(N = n()),
   scale_fill_discrete(name = "", labels = c("Away", "Home"))
   
 ```
+<br>
+<br>
 
 
-### Games won after trailing at half time
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+
+ggplot(teamGames %>% group_by(Points) %>% summarise(Count = n()),
+       aes(x="", y=Count, fill=as.character(Points)))+
+      geom_bar(width = 1, stat = "identity")+
+      coord_polar("y")+
+      geom_text(aes(y = Count, 
+            label = Count), size=5,
+            position = position_stack(vjust = 0.5))+
+    scale_fill_discrete(name = "", labels = c("Lost", "Tied","Won"))+
+  ylab("Number of games")+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank())+
+  labs(title=paste(params$team, " - Games Won Vs Llost/Tied - Season:",params$season),
+       caption = "Source: EPL data set")
+
+```
+
+
+<br>
+<br>
 
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
 teamGamesTrailing <- teamGames[teamGames$HTR!=teamGames$IsHomeAway & teamGames$HTR!="D",][,c(1:5,7,8,24)]
 colnames(teamGamesTrailing)[4:7] <- c("Full Time Home Goals", "Full Time Away Goals","Half Time Home Goals", "Half Time Away Goals")
 
-DT::datatable(teamGamesTrailing[,-c(8)])
-
-
 ```
+
+
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
 
 ggplot(teamGamesTrailing %>% group_by(Points) %>% summarise(Count = n()),
@@ -91,24 +120,43 @@ ggplot(teamGamesTrailing %>% group_by(Points) %>% summarise(Count = n()),
   theme(axis.title.y=element_blank(),
         axis.title.x=element_blank(),
         axis.text.x=element_blank())+
-  ggtitle("Number of games won vs lost/tied after trailing at half time")
+  labs(title=paste(params$team, " - Games Won Vs Lost/Tied After Trailing At Half Time - Season:",params$season),
+       caption = "Source: EPL data set")
+
 
 ```
 
 
-### General Statistics
+<br>
+<br>
 
-#### Total points and win ratio
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+
+teamGames <- teamGames[order(teamGames$Date),]
+teamGames <- within(teamGames, Pointscumsum <- cumsum(Points)) # cummulative sum of goal difference
+
+
+ggplot(teamGames, aes(x=Date,y=Pointscumsum)) +
+  geom_step(color = "red")+
+  theme_minimal()+
+  labs(x = "Match Day",
+       y = "Points",
+       title = "Points Curve, Points Per Game Across Season")+
+  geom_step(aes(y=Points*5))+
+  scale_y_continuous("Total Points", sec.axis = sec_axis(~ . * 0.2, name = "Points"))
+
+```
+
 
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
 
 cat("Total Points in the season: ", sum(teamGames$Points))
-cat("Number of games per result type:")
 
-table(teamGames$Points)
 ```
 
-#### Position on the table
+
+
+
 
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
 SeasonTable <- data.frame(Team=unique(SeasonData$HomeTeam), 
@@ -123,7 +171,7 @@ totalPoints <- function(team)
 }
 
 SeasonTable$Points <- unlist(lapply(SeasonTable$Team, totalPoints))
-SeasonTable
+(SeasonTable <- SeasonTable[order(-SeasonTable$Points),])
 ```
 
 **Rank**
@@ -136,8 +184,9 @@ SeasonTable$rank[order.scores] <- 1:nrow(SeasonTable)
 cat(params$team, "finished in",21-SeasonTable$rank[SeasonTable$Team==params$team] ,"th place in EPL season-",params$season)
 ```
 
+<br>
+<br>
 
-#### Shot Conversion Rate
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
 ggplot(teamGames, aes(x=ShotsonTarget,y=TeamGoals,color=IsHomeAway)) +
   geom_point()+
@@ -146,12 +195,14 @@ ggplot(teamGames, aes(x=ShotsonTarget,y=TeamGoals,color=IsHomeAway)) +
   scale_color_discrete(name = "", labels = c("Away", "Home"))+
   labs(x = "Number of shots",
        y = "Number of goals",
-       title = "Shot Conversion Rate")
+       title=paste(params$team, " - Shot Conversion Rate - Season:",params$season),
+       caption = "Source: EPL data set")
+
 ```
 
 
 
-#### Win Percentage against the top - 6 in the season
+
 
 ```{r echo = FALSE, messages = FALSE, warning = FALSE}
 
@@ -161,6 +212,29 @@ top6 <- top6[!top6 %in% params$team] # remove the team if it is also in the top-
 Gamestop6 <- teamGames %>% filter(Opponent %in% top6)
 
 cat(params$team,"won", 100*sum(Gamestop6$Points==3)/nrow(Gamestop6)," % of their games against the top 6 in season ", params$season)
+
+```
+
+<br>
+<br>
+
+```{r echo = FALSE, messages = FALSE, warning = FALSE}
+teamGames$OpponentGoals <- ifelse(teamGames$IsHomeAway=="H",teamGames$FTAG,teamGames$FTHG)
+teamGames$GoalDiff <- teamGames$TeamGoals - teamGames$OpponentGoals
+
+teamGames <- teamGames[order(teamGames$Date),]
+teamGames <- within(teamGames, cumsumGoalDiff <- cumsum(GoalDiff)) # cummulative sum of goal difference
+
+
+ggplot(teamGames, aes(x=Date,y=cumsumGoalDiff)) +
+  geom_step(color = "red")+
+  # geom_smooth(formula = y ~ x, method = "loess")+
+  theme_minimal()+
+  # scale_color_discrete(name = "", labels = c("Away", "Home"))+
+  labs(x = "Match Day",
+       y = "Goal Difference",
+       title=paste(params$team, " - Cummulative Goal Difference - Season:",params$season),
+       caption = "Source: EPL data set")
 
 ```
 
